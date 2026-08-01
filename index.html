@@ -152,6 +152,10 @@
     <div class="tot ocu"><div class="n" id="tOcu">0</div><div class="l">Ocupados</div></div>
     <div class="tot"><div class="n" id="tTotal">0</div><div class="l">Total</div></div>
   </div>
+  <div id="timerBar" style="margin:10px 12px 0;text-align:center;background:#12151a;border:1px solid #2b313b;border-radius:12px;padding:10px;font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;color:#7c93ff;letter-spacing:1px;">
+    <span id="timerTime">⏱ 15:00</span>
+    <div id="timerSub" style="font-size:11px;font-weight:600;color:#9aa2ad;letter-spacing:.5px;text-transform:uppercase;margin-top:3px;">Tiempo del bloque (15 min)</div>
+  </div>
   <div class="buttons">
     <button class="tap vacio" onclick="registrar('Vacío')">VACÍO<span class="sub">+ registrar hora</span></button>
     <button class="tap ocu" onclick="registrar('Ocupado')">OCUPADO<span class="sub">+ registrar hora</span></button>
@@ -180,7 +184,7 @@ var PARADAS = [{"c": "LU_P1", "n": "Lunes 1 · IPS Central frente al Stock", "m"
 var DIAS = ["Lunes","Martes","Miercoles","Jueves","Viernes","Sabado","Domingo"];
 var DIA_PREF = {Lunes:"LU_",Martes:"MA_",Miercoles:"MI_",Jueves:"JU_",Viernes:"VI_",Sabado:"SA_",Domingo:"DO_"};
 
-var meta = { contador:"", parada_codigo:"", parada_nombre:"", cambio:"No", bloque:"", inicio:"", obs:"" };
+var meta = { contador:"", parada_codigo:"", parada_nombre:"", cambio:"No", bloque:"", inicio:"", obs:"", tramoInicio:0, avisado:false };
 var log = [];              // registros: {id,fecha,hora,estado,status,...}
 var scriptUrl = "";
 var deviceId = "";
@@ -290,6 +294,7 @@ function iniciar(){
   meta.cambio=cambioVal;
   meta.bloque=document.getElementById('bloque').value;
   meta.inicio=stamp();
+  meta.tramoInicio=Date.now(); meta.avisado=false;
   guardar(); mostrarConteo();
 }
 function mostrarConteo(){
@@ -297,6 +302,7 @@ function mostrarConteo(){
   document.getElementById('conteo').classList.remove('hidden');
   document.getElementById('hdrSub').textContent = meta.parada_codigo+' · '+meta.bloque+' · '+meta.contador;
   document.getElementById('obs').value = meta.obs||'';
+  iniciarTimer();
   render();
 }
 
@@ -316,8 +322,10 @@ function registrar(estado){
 }
 function deshacer(){
   if(!log.length) return;
-  log.pop(); guardar();
-  document.getElementById('lastMsg').textContent='Se deshizo el último registro (local).';
+  var rec=log.pop(); guardar();
+  if(rec.status==='sent'){ eliminarEnSheets(rec); }        // ya estaba en la hoja: pedir borrado
+  else if(rec.status==='sending'){ rec.deleted=true; }     // en camino: se borrará al confirmarse
+  document.getElementById('lastMsg').textContent='Se deshizo el último registro.';
   render();
 }
 function reiniciar(){
@@ -335,7 +343,7 @@ function render(){
   pintarPend();
 }
 function pintarPend(){
-  var pend=log.filter(function(r){return r.status==='pending';}).length;
+  var pend=log.filter(function(r){return r.status!=='sent';}).length;
   var el=document.getElementById('pendMsg');
   if(!scriptUrl){ el.innerHTML='<span class="w">⚠ Sin enlace de Google Sheets configurado — guardando solo local.</span>'; return; }
   el.innerHTML = pend? '<span class="w">⏳ '+pend+' pendiente(s) de enviar</span>' : '<span class="ok">✓ todo enviado</span>';
@@ -343,15 +351,43 @@ function pintarPend(){
 
 /* ---------- envío a Google Sheets ---------- */
 function enviar(rec){
-  if(!scriptUrl){ pintarPend(); return; }
-  if(!navigator.onLine){ pintarPend(); return; }
+  if(!scriptUrl || !navigator.onLine){ pintarPend(); return; }
+  if(rec.status==='sent' || rec.status==='sending'){ return; }   // evita reenvíos/duplicados
+  rec.status='sending'; guardar(); pintarPend();
+  var payload={}; for(var k in rec){ if(k!=='status') payload[k]=rec[k]; } payload.accion='add';
   try{
     fetch(scriptUrl, { method:'POST', mode:'no-cors',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify(rec) })
-    .then(function(){ rec.status='sent'; guardar(); pintarPend(); })
+      body: JSON.stringify(payload) })
+    .then(function(){ rec.status='sent'; guardar(); pintarPend();
+      if(rec.deleted){ eliminarEnSheets(rec); } })
     .catch(function(){ rec.status='pending'; guardar(); pintarPend(); });
   }catch(e){ rec.status='pending'; guardar(); pintarPend(); }
+}
+function eliminarEnSheets(rec){
+  if(!scriptUrl || !rec || !rec.id) return;
+  try{
+    fetch(scriptUrl, { method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({accion:'delete', id:rec.id}) });
+  }catch(e){}
+}
+/* ---------- cronómetro de 15 minutos ---------- */
+var timerInt=null;
+function fmt2(n){ return String(n).padStart(2,'0'); }
+function iniciarTimer(){
+  if(timerInt){ clearInterval(timerInt); }
+  if(!meta.tramoInicio){ meta.tramoInicio=Date.now(); guardar(); }
+  tickTimer(); timerInt=setInterval(tickTimer,1000);
+}
+function tickTimer(){
+  var bar=document.getElementById('timerBar'); if(!bar) return;
+  var rest=meta.tramoInicio+15*60000-Date.now();
+  var over=rest<0, s=Math.floor(Math.abs(rest)/1000);
+  document.getElementById('timerTime').textContent=(over?'⏱ +':'⏱ ')+fmt2(Math.floor(s/60))+':'+fmt2(s%60);
+  document.getElementById('timerSub').textContent= over?'BLOQUE CUMPLIDO — cerrá y abrí uno nuevo':'Tiempo del bloque (15 min)';
+  bar.style.color = over?'#ff8a8a':(rest<180000?'#ffcf6b':'#7c93ff');
+  if(over && !meta.avisado){ meta.avisado=true; guardar(); if(navigator.vibrate) navigator.vibrate([200,100,200]); }
 }
 function flush(){
   if(!scriptUrl || !navigator.onLine) { pintarPend(); return; }
@@ -378,9 +414,10 @@ function exportarCSV(){
 
 /* ---------- nuevo bloque ---------- */
 function nuevoBloque(){
-  var pend=log.filter(function(r){return r.status==='pending';}).length;
+  var pend=log.filter(function(r){return r.status!=='sent';}).length;
   if(pend && !confirm('Hay '+pend+' registro(s) sin enviar. ¿Cerrar el bloque igual? (Se reintentarán solos cuando haya señal)')) return;
-  log=[]; meta.obs='';
+  log=[]; meta.obs=''; meta.tramoInicio=0; meta.avisado=false;
+  if(timerInt){ clearInterval(timerInt); timerInt=null; }
   document.getElementById('setup').classList.remove('hidden');
   document.getElementById('conteo').classList.add('hidden');
   document.getElementById('hdrSub').textContent='Identificación del bloque';
