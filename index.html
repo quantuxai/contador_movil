@@ -135,7 +135,7 @@
 
     <div class="auto">Inicio del registro (automático): <span id="inicioAuto">—</span></div>
     <button class="btn-primary" id="startBtn" onclick="iniciar()" disabled>Iniciar conteo →</button>
-    <div class="config-toggle" onclick="toggleConfig()">⚙ Configurar enlace de Google Sheets</div>
+    <!-- Enlace de Google Sheets fijo en el código (config oculto en producción) -->
     <div id="configBox" class="hidden" style="margin-top:10px;">
       <label>URL del Web App (Apps Script)</label>
       <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/..../exec" autocomplete="off">
