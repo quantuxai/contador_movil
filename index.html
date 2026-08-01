@@ -164,14 +164,12 @@
   <div class="pend" id="pendMsg"></div>
   <div class="toolbar">
     <button onclick="deshacer()">↩ Deshacer último</button>
-    <button class="danger" onclick="reiniciar()">🗑 Reiniciar bloque</button>
   </div>
   <div class="card">
     <h2>Cierre del bloque</h2>
     <label>Observaciones del bloque (opcional)</label>
     <textarea id="obs" placeholder="Notas..."></textarea>
     <div class="export-row">
-      <button onclick="exportarCSV()">⬇ Respaldo CSV</button>
       <button onclick="reintentar()" style="background:#2563eb;">⟳ Reenviar pendientes</button>
     </div>
     <button class="btn-primary" style="margin-top:10px;background:#7c3aed;" onclick="nuevoBloque()">✓ Cerrar y nuevo bloque</button>
