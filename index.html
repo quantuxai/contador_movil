@@ -376,7 +376,18 @@ function tickTimer(){
   document.getElementById('timerTime').textContent=(over?'⏱ +':'⏱ ')+fmt2(Math.floor(s/60))+':'+fmt2(s%60);
   document.getElementById('timerSub').textContent= over?'BLOQUE CUMPLIDO — cerrá y abrí uno nuevo':'Tiempo del bloque (15 min)';
   bar.style.color = over?'#ff8a8a':(rest<180000?'#ffcf6b':'#7c93ff');
-  if(over && !meta.avisado){ meta.avisado=true; guardar(); if(navigator.vibrate) navigator.vibrate([200,100,200]); }
+  if(over && !meta.avisado){
+    meta.avisado=true; guardar();
+    if(navigator.vibrate) navigator.vibrate([200,100,200]);
+    /* Cierre automático al cumplirse los 15 min: vuelve a Identificación del bloque */
+    cerrarAutomatico();
+  }
+}
+function cerrarAutomatico(){
+  if(timerInt){ clearInterval(timerInt); timerInt=null; }
+  flush();  /* intenta enviar lo pendiente antes de cerrar */
+  alert('⏱ Bloque de 15 minutos cumplido. Se cerró automáticamente. Iniciá el nuevo bloque.');
+  nuevoBloque(true);
 }
 function flush(){
   if(!scriptUrl || !navigator.onLine) { pintarPend(); return; }
@@ -402,9 +413,9 @@ function exportarCSV(){
 }
 
 /* ---------- nuevo bloque ---------- */
-function nuevoBloque(){
+function nuevoBloque(auto){
   var pend=log.filter(function(r){return r.status!=='sent';}).length;
-  if(pend && !confirm('Hay '+pend+' registro(s) sin enviar. ¿Cerrar el bloque igual? (Se reintentarán solos cuando haya señal)')) return;
+  if(!auto && pend && !confirm('Hay '+pend+' registro(s) sin enviar. ¿Cerrar el bloque igual? (Se reintentarán solos cuando haya señal)')) return;
   log=[]; meta.obs=''; meta.tramoInicio=0; meta.avisado=false;
   if(timerInt){ clearInterval(timerInt); timerInt=null; }
   document.getElementById('setup').classList.remove('hidden');
