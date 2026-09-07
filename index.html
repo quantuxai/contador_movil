@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Contador de Vehículos — AMA</title>
+<title>Contador de Vehículos — Panamá</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; }
@@ -83,6 +83,18 @@
   .export-row { display:flex; gap:8px; margin-top:8px; }
   .export-row button { flex:1; background:#16855c; color:#fff; border:none; border-radius:12px;
     padding:14px; font-size:15px; font-weight:700; cursor:pointer; }
+  .state-tag { text-align:center; font-size:12px; font-weight:700; letter-spacing:.5px;
+    text-transform:uppercase; margin:8px 12px 0; }
+  .state-tag.off { color:#ffcf6b; } .state-tag.on { color:#7bd88a; }
+  .period-ctl { margin:10px 12px 0; }
+  .period-ctl button { width:100%; border:none; border-radius:16px; padding:17px;
+    font-size:18px; font-weight:800; cursor:pointer; transition:transform .05s, filter .1s; }
+  .period-ctl button:active { transform:scale(.98); }
+  .period-ctl .start { background:linear-gradient(135deg,#2563eb,#4f7cff); color:#fff;
+    box-shadow:0 6px 18px rgba(37,99,235,.35); }
+  .period-ctl .stop { background:linear-gradient(135deg,#e05353,#ff7a7a); color:#2b0707;
+    box-shadow:0 6px 18px rgba(224,83,83,.35); }
+  .tap:disabled { filter:grayscale(.75) brightness(.55); cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -91,7 +103,7 @@
     <div class="logo">🚗</div>
     <div class="brand-txt">
       <h1>Contador de Vehículos</h1>
-      <div class="tag">Área Metropolitana de Asunción · AMA</div>
+      <div class="tag">Área Metropolitana de Panamá</div>
     </div>
     <div class="net off" id="netBadge">sin conexión</div>
   </div>
@@ -125,7 +137,7 @@
 
 
     <div class="auto">Inicio del registro (automático): <span id="inicioAuto">—</span></div>
-    <button class="btn-primary" id="startBtn" onclick="iniciar()" disabled>Iniciar conteo →</button>
+    <button class="btn-primary" id="startBtn" onclick="iniciar()" disabled>Continuar →</button>
     <!-- Enlace de Google Sheets fijo en el código (config oculto en producción) -->
     <div id="configBox" class="hidden" style="margin-top:10px;">
       <label>URL del Web App (Apps Script)</label>
@@ -144,14 +156,15 @@
     <div class="tot"><div class="n" id="tTotal">0</div><div class="l">Total</div></div>
   </div>
   <div id="timerBar" style="margin:10px 12px 0;text-align:center;background:#12151a;border:1px solid #2b313b;border-radius:12px;padding:10px;font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;color:#7c93ff;letter-spacing:1px;">
-    <span id="timerTime">⏱ 15:00</span>
-    <div id="timerSub" style="font-size:11px;font-weight:600;color:#9aa2ad;letter-spacing:.5px;text-transform:uppercase;margin-top:3px;">Tiempo del bloque (15 min)</div>
+    <span id="timerTime">⏱ 60:00</span>
+    <div id="timerSub" style="font-size:11px;font-weight:600;color:#9aa2ad;letter-spacing:.5px;text-transform:uppercase;margin-top:3px;">Bloque sin iniciar · pulsa “Iniciar conteo”</div>
   </div>
+  <div class="state-tag off" id="stateTag">Conteo sin iniciar</div>
   <div class="buttons">
-    <button class="tap vacio" onclick="registrar('Vacío')">VACÍO<span class="sub">+ registrar hora</span></button>
-    <button class="tap ocu" onclick="registrar('Ocupado')">OCUPADO<span class="sub">+ registrar hora</span></button>
+    <button class="tap vacio" id="btnVacio" onclick="registrar('Vacío')">VACÍO<span class="sub">+ registrar hora</span></button>
+    <button class="tap ocu" id="btnOcu" onclick="registrar('Ocupado')">OCUPADO<span class="sub">+ registrar hora</span></button>
   </div>
-  <div class="last" id="lastMsg">Toca un botón por cada vehículo que pasa.</div>
+  <div class="last" id="lastMsg">Pulsa “Iniciar conteo” para comenzar el bloque de 1 hora.</div>
   <div class="pend" id="pendMsg"></div>
   <div class="toolbar">
     <button onclick="deshacer()">↩ Deshacer último</button>
@@ -163,23 +176,48 @@
     <div class="export-row">
       <button onclick="reintentar()" style="background:#2563eb;">⟳ Reenviar pendientes</button>
     </div>
-    <button class="btn-primary" style="margin-top:10px;background:#7c3aed;" onclick="nuevoBloque()">✓ Cerrar y nuevo bloque</button>
+    <button class="btn-primary" style="margin-top:10px;background:#7c3aed;" onclick="nuevoBloque()">↺ Cambiar parada / contador</button>
   </div>
 </div>
 
 <script>
 var PARADAS = [
-{"c": "G1", "n": "SHOPING VILLA MORRA (saliendo San Lorenzo)", "m": ""},
-{"c": "G2", "n": "frente a la terminal salida de Asuncion", "m": ""},
-{"c": "G3", "n": "FRENTE A LA UNA entrada a Asuncion", "m": ""},
-{"c": "G4", "n": "S Sacramento,IGLESIA DE TRINIDAD", "m": ""}
+{"c": "Lun_P1", "n": "Metro Villa Zaita-I", "m": "https://www.google.com/maps?q=9.079842,-79.356695"},
+{"c": "Lun_P2", "n": "Alajuela-R", "m": "https://www.google.com/maps?q=9.02792,-79.507166"},
+{"c": "Lun_P3", "n": "Gran Estacion - Bahia A", "m": "https://www.google.com/maps?q=9.030284,-79.491553"},
+{"c": "Lun_P4", "n": "Metro Cincuentenario-R", "m": "https://www.google.com/maps?q=9.079782,-79.527075"},
+{"c": "Mar_P1", "n": "Balboa-R (Troncal)*", "m": "https://www.google.com/maps?q=9.050935,-79.450451"},
+{"c": "Mar_P2", "n": "Metro San Isidro-R-Puerta 12", "m": "https://www.google.com/maps?q=9.029435,-79.506964"},
+{"c": "Mar_P3", "n": "ZP Torrijos Carter - Puerta 1", "m": "https://www.google.com/maps?q=9.07816,-79.492093"},
+{"c": "Mar_P4", "n": "Inter. Metro Nvo. Tocumen-I-Puerta 06", "m": "https://www.google.com/maps?q=9.102062,-79.353636"},
+{"c": "Mie_P1", "n": "Metro Loteria", "m": "https://www.google.com/maps?q=9.078935,-79.400562"},
+{"c": "Mie_P2", "n": "Entrada Villa Don Bosco-I", "m": "https://www.google.com/maps?q=9.031334,-79.491449"},
+{"c": "Mie_P3", "n": "Los Andes-I - (Troncal)*", "m": "https://www.google.com/maps?q=9.048886,-79.508065"},
+{"c": "Mie_P4", "n": "Balmoral-I", "m": "https://www.google.com/maps?q=9.059213,-79.432333"},
+{"c": "Jue_P2", "n": "Albrook - Bahia A", "m": "https://www.google.com/maps?q=8.973854,-79.551737"},
+{"c": "Jue_P4", "n": "24 de diciembre 2  -Troncal*", "m": "https://www.google.com/maps?q=8.961476,-79.539079"},
+{"c": "Jue_P5", "n": "CC El Dorado-I - Bahia 2", "m": "https://www.google.com/maps?q=9.009534,-79.534123"},
+{"c": "Jue_P8", "n": "Albrook - Bahia C", "m": "https://www.google.com/maps?q=8.975731,-79.551662"},
+{"c": "Vie_P1", "n": "Metro Villa Zaita-I", "m": "https://www.google.com/maps?q=9.079564,-79.526522"},
+{"c": "Vie_P2", "n": "Las Colinas-I (Troncal)*", "m": "https://www.google.com/maps?q=9.050097,-79.509193"},
+{"c": "Vie_P5", "n": "Metro 12 de Octubre-R", "m": "https://www.google.com/maps?q=9.103269,-79.37021"},
+{"c": "Vie_P6", "n": "Albrook - Bahia B", "m": "https://www.google.com/maps?q=8.975104,-79.551617"},
+{"c": "Sab_P4", "n": "Cerro Viento-I - Bahia A -Troncal*", "m": "https://www.google.com/maps?q=9.050487,-79.450427"},
+{"c": "Sab_P5", "n": "5 de mayo Troncal*", "m": "https://www.google.com/maps?q=9.024393,-79.486468"},
+{"c": "Sab_P6", "n": "Muelle Gamboa-R", "m": "https://www.google.com/maps?q=8.986878,-79.51266"},
+{"c": "Sab_P11", "n": "5 de mayo Corredor*", "m": "https://www.google.com/maps?q=8.961749,-79.539268"},
+{"c": "Dom_P7", "n": "Metro Brisas del Golf-R", "m": "https://www.google.com/maps?q=9.031035,-79.491336"},
+{"c": "Dom_P8", "n": "Alajuela-R", "m": "https://www.google.com/maps?q=8.973217,-79.551777"},
+{"c": "Dom_P9", "n": "ZP 24 de Diciembre 2 - Puerta 1", "m": "https://www.google.com/maps?q=9.103266,-79.366524"},
+{"c": "Dom_P12", "n": "Central T Chorrillo", "m": "https://www.google.com/maps?q=8.975609,-79.516371"}
 ];
 
 var DIAS = ["Lunes","Martes","Miercoles","Jueves","Viernes","Sabado","Domingo"];
-var DIA_PREF = {Lunes:"LU_",Martes:"MA_",Miercoles:"MI_",Jueves:"JU_",Viernes:"VI_",Sabado:"SA_",Domingo:"DO_"};
+var DIA_PREF = {Lunes:"Lun_",Martes:"Mar_",Miercoles:"Mie_",Jueves:"Jue_",Viernes:"Vie_",Sabado:"Sab_",Domingo:"Dom_"};
 
-var meta = { contador:"", parada_codigo:"", parada_nombre:"", cambio:"No", bloque:"", inicio:"", obs:"", tramoInicio:0, avisado:false };
-var log = [];              // registros: {id,fecha,hora,estado,status,...}
+var meta = { contador:"", parada_codigo:"", parada_nombre:"", cambio:"No", bloque:"", inicio:"", obs:"", tramoInicio:0, avisado:false, horaInicio:"", horaFin:"", periodoActivo:false, periodoId:"" };
+var log = [];              // registros CONTEO del bloque en curso
+var markers = [];          // marcadores INICIO / RESUMEN
 var scriptUrl = "";
 var deviceId = "";
 
@@ -187,13 +225,13 @@ var deviceId = "";
 function cargar(){
   try{
     var s = JSON.parse(localStorage.getItem('cv_state')||'null');
-    if(s){ meta=s.meta||meta; log=s.log||[]; }
+    if(s){ meta=s.meta||meta; log=s.log||[]; markers=s.markers||[]; }
   }catch(e){}
   scriptUrl = localStorage.getItem('cv_url')||"https://script.google.com/macros/s/AKfycbyZjGFaGFUao5vgQTwdCJ_dcpX4AS8sEmnrvM2xvRiSx9aFmBooi8o-8MNympzEsnzy/exec";
   deviceId = localStorage.getItem('cv_device');
   if(!deviceId){ deviceId = 'D'+Math.random().toString(36).slice(2,8).toUpperCase(); localStorage.setItem('cv_device',deviceId); }
 }
-function guardar(){ try{ localStorage.setItem('cv_state', JSON.stringify({meta:meta,log:log})); }catch(e){} }
+function guardar(){ try{ localStorage.setItem('cv_state', JSON.stringify({meta:meta,log:log,markers:markers})); }catch(e){} }
 
 function ahoraHMS(){ var d=new Date(),p=function(n){return String(n).padStart(2,'0');};
   return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
@@ -219,7 +257,7 @@ function guardarUrl(){
 }
 
 /* ---------- validación ---------- */
-function autoBloque(){ var h=new Date().getHours(); function p(n){return (n<10?'0':'')+n;} return p(h)+':00-'+p(h)+':15'; }
+function autoBloque(){ var h=new Date().getHours(); function p(n){return (n<10?'0':'')+n;} return p(h)+':00-'+p(h+1)+':00'; }
 function validar(){
   var ok = document.getElementById('contador').value.trim() &&
            document.getElementById('parada').value.trim();
@@ -243,7 +281,7 @@ document.querySelectorAll('#cambioRow button').forEach(function(b){
   sel.value=map[new Date().getDay()];
   sel.addEventListener('change', function(){ if(!document.getElementById('paradaSearch').value.trim()) mostrarLista(''); });
 })();
-function esPresel(p){ return /_P/.test(p.c) && /^(LU|MA|MI|JU|VI|SA|DO)_/.test(p.c); }
+function esPresel(p){ return /_P/.test(p.c) && /^(Lun|Mar|Mie|Jue|Vie|Sab|Dom)_/.test(p.c); }
 function filtrar(q){
   q=(q||'').trim().toLowerCase();
   var pref=DIA_PREF[document.getElementById('dia').value];
@@ -286,26 +324,88 @@ function elegir(cod){
 function iniciar(){
   meta.contador=document.getElementById('contador').value.trim();
   meta.cambio=cambioVal;
-  meta.bloque=autoBloque();
   meta.inicio=stamp();
-  meta.tramoInicio=Date.now(); meta.avisado=false;
-  guardar(); mostrarConteo();
+  meta.motivoInicio = meta.pendienteCambio ? 'R' : 'I';   // I=Inicio de turno · R=cambio de parada/contador
+  meta.pendienteCambio=false;
+  meta.turnoId='TURNO'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
+  meta.turnoHora=ahoraHMS();
+  guardar();
+  enviarInicioTurno();   // registra la marca (I o R) aunque no pase ningún vehículo
+  mostrarConteo();
+  var el=document.getElementById('lastMsg');
+  if(el) el.innerHTML='✓ '+(meta.motivoInicio==='R'?'Cambio de parada/contador (R)':'Inicio de turno (I)')+' registrado a las <b>'+meta.turnoHora+'</b> (aún sin conteo). Pulsa “▶ Iniciar conteo” cuando comiences.';
+}
+function enviarInicioTurno(){
+  var esR = meta.motivoInicio==='R';
+  var obs = esR ? 'R = CAMBIO DE PARADA/CONTADOR (marca de asistencia, no es conteo)'
+                : 'I = INICIO DE TURNO (marca de asistencia, no es conteo)';
+  var rec={ id:meta.turnoId, tipo:'INICIO_TURNO', fecha:hoyFecha(), hora:meta.turnoHora||ahoraHMS(),
+    contador:meta.contador, parada_codigo:meta.parada_codigo, parada_nombre:meta.parada_nombre,
+    cambio_parada:meta.cambio, bloque:autoBloque(), estado:'INICIO_TURNO',
+    hora_inicio:meta.turnoHora||ahoraHMS(), hora_fin:'', total:'', total_vacios:'', total_ocupados:'',
+    periodo_id:meta.turnoId, observaciones:obs, dispositivo:deviceId, status:'pending' };
+  markers.push(rec); guardar(); enviar(rec);
 }
 function mostrarConteo(){
   document.getElementById('setup').classList.add('hidden');
   document.getElementById('conteo').classList.remove('hidden');
-  document.getElementById('hdrSub').textContent = meta.parada_codigo+' · '+meta.bloque+' · '+meta.contador;
+  document.getElementById('hdrSub').textContent = meta.parada_codigo+' · '+(meta.bloque||'bloque')+' · '+meta.contador;
   document.getElementById('obs').value = meta.obs||'';
-  iniciarTimer();
-  render();
+  if(!meta.periodoActivo){ iniciarPeriodo(); }   // el conteo arranca automáticamente al entrar
+  else { render(); pintarPeriodo(); iniciarTimer(); }
+}
+
+/* ---------- período de conteo (arranca automáticamente) ---------- */
+function iniciarPeriodo(){
+  markers = markers.filter(function(r){ return r.status!=='sent'; });  // poda
+  log=[];
+  meta.periodoActivo=true;
+  meta.periodoId='B'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
+  meta.horaInicio=ahoraHMS(); meta.horaFin='';
+  meta.bloque=autoBloque(); meta.tramoInicio=Date.now(); meta.avisado=false;
+  guardar();
+  /* No se registra nada al iniciar: el primer envío ocurre al primer toque de Vacío u Ocupado. */
+  document.getElementById('hdrSub').textContent = meta.parada_codigo+' · '+meta.bloque+' · '+meta.contador;
+  document.getElementById('lastMsg').innerHTML='Bloque iniciado a las <b>'+meta.horaInicio+'</b>. Marca cada vehículo.';
+  pintarPeriodo(); render(); iniciarTimer();
+}
+function finalizarPeriodo(auto){
+  if(!meta.periodoActivo) return;
+  var v=log.filter(function(r){return r.estado==='Vacío';}).length;
+  var o=log.filter(function(r){return r.estado==='Ocupado';}).length;
+  meta.horaFin=ahoraHMS(); meta.periodoActivo=false;
+  if(timerInt){ clearInterval(timerInt); timerInt=null; }
+  enviarResumen(v,o);   // total vacíos/ocupados (0 si no pasó ninguno)
+  guardar();
+  if(navigator.vibrate) navigator.vibrate([60,40,60]);
+  document.getElementById('lastMsg').innerHTML=(auto?'⏱ Bloque de 1 hora cumplido. ':'Bloque finalizado. ')+
+    '<b>'+(v+o)+'</b> veh. ('+v+' vacíos, '+o+' ocupados) · '+meta.horaInicio+'–'+meta.horaFin+'.';
+  pintarPeriodo();
+}
+function pintarPeriodo(){
+  var tag=document.getElementById('stateTag');
+  var bv=document.getElementById('btnVacio'), bo=document.getElementById('btnOcu');
+  if(!tag) return;
+  if(meta.periodoActivo){
+    if(bv) bv.disabled=false; if(bo) bo.disabled=false;
+    tag.textContent='● Conteo en curso · inicio '+(meta.horaInicio||'—'); tag.className='state-tag on';
+  } else {
+    if(bv) bv.disabled=true; if(bo) bo.disabled=true;
+    tag.textContent='Conteo sin iniciar'; tag.className='state-tag off';
+    var tt=document.getElementById('timerTime'), ts=document.getElementById('timerSub');
+    if(tt){ tt.textContent='⏱ 60:00'; tt.parentNode.style.color='#7c93ff'; }
+    if(ts) ts.textContent='Bloque sin iniciar';
+  }
 }
 
 /* ---------- registro por toque ---------- */
 function registrar(estado){
-  var rec={ id:Date.now()+'_'+Math.random().toString(36).slice(2,6),
+  if(!meta.periodoActivo){ alert('Primero pulsa “▶ Iniciar conteo”.'); return; }
+  var rec={ id:Date.now()+'_'+Math.random().toString(36).slice(2,6), tipo:'CONTEO',
     fecha:hoyFecha(), hora:ahoraHMS(), contador:meta.contador,
     parada_codigo:meta.parada_codigo, parada_nombre:meta.parada_nombre,
     cambio_parada:meta.cambio, bloque:meta.bloque, estado:estado,
+    hora_inicio:meta.horaInicio, hora_fin:'', periodo_id:meta.periodoId,
     observaciones:document.getElementById('obs')?document.getElementById('obs').value:'',
     dispositivo:deviceId, status:'pending' };
   log.push(rec); guardar();
@@ -317,10 +417,24 @@ function registrar(estado){
 function deshacer(){
   if(!log.length) return;
   var rec=log.pop(); guardar();
-  if(rec.status==='sent'){ eliminarEnSheets(rec); }        // ya estaba en la hoja: pedir borrado
-  else if(rec.status==='sending'){ rec.deleted=true; }     // en camino: se borrará al confirmarse
-  document.getElementById('lastMsg').textContent='Se deshizo el último registro.';
+  if(rec.status==='sent' || rec.status==='sending'){ anularEnSheets(rec); }
+  document.getElementById('lastMsg').textContent='Se deshizo el último registro (corrección).';
   render();
+}
+/* Deshacer: deja UNA sola fila ANULADO reusando la MISMA id del original.
+   Se borra el original y se envía la corrección con su id; al reusar la id, la
+   de-duplicación evita que el original (fila en blanco) reaparezca o se duplique. */
+function anularEnSheets(orig){
+  if(!orig || !orig.id) return;
+  var rec={ id:orig.id+'_ANUL', anula_id:orig.id, accion:'anular', tipo:'ANULADO', fecha:hoyFecha(), hora:ahoraHMS(),
+    contador:meta.contador, parada_codigo:meta.parada_codigo, parada_nombre:meta.parada_nombre,
+    cambio_parada:meta.cambio, bloque:meta.bloque, estado:'ANULADO',
+    hora_inicio:meta.horaInicio, hora_fin:'', total:'', total_vacios:'', total_ocupados:'',
+    periodo_id:meta.periodoId,
+    observaciones:'REGISTRO DESHECHO (corrección, no es conteo) — anula '+(orig.estado||'')+' de las '+(orig.hora||''),
+    dispositivo:deviceId, status:'pending' };
+  markers = markers.filter(function(m){ return m.id!==rec.id; });
+  markers.push(rec); guardar(); enviar(rec);
 }
 function reiniciar(){
   if(!log.length) return;
@@ -336,11 +450,32 @@ function render(){
   document.getElementById('tTotal').textContent=log.length;
   pintarPend();
 }
+function pendientes(){ return log.filter(function(r){return r.status!=='sent';}).length + markers.filter(function(r){return r.status!=='sent';}).length; }
 function pintarPend(){
-  var pend=log.filter(function(r){return r.status!=='sent';}).length;
+  var pend=pendientes();
   var el=document.getElementById('pendMsg');
   if(!scriptUrl){ el.innerHTML='<span class="w">⚠ Sin enlace de Google Sheets configurado — guardando solo local.</span>'; return; }
   el.innerHTML = pend? '<span class="w">⏳ '+pend+' pendiente(s) de enviar</span>' : '<span class="ok">✓ todo enviado</span>';
+}
+
+/* Marcadores INICIO / RESUMEN: garantizan que el bloque quede registrado aunque no pase ningún vehículo */
+function enviarMarcador(tipo){
+  var rec={ id:meta.periodoId+'_'+tipo, tipo:tipo, fecha:hoyFecha(), hora:meta.horaInicio||ahoraHMS(),
+    contador:meta.contador, parada_codigo:meta.parada_codigo, parada_nombre:meta.parada_nombre,
+    cambio_parada:meta.cambio, bloque:meta.bloque, estado:tipo,
+    hora_inicio:meta.horaInicio, hora_fin:'', total:'', total_vacios:'', total_ocupados:'',
+    periodo_id:meta.periodoId, observaciones:'', dispositivo:deviceId, status:'pending' };
+  markers.push(rec); guardar(); enviar(rec);
+}
+function enviarResumen(v,o){
+  var rec={ id:meta.periodoId+'_RESUMEN', tipo:'RESUMEN', fecha:hoyFecha(), hora:meta.horaFin||ahoraHMS(),
+    contador:meta.contador, parada_codigo:meta.parada_codigo, parada_nombre:meta.parada_nombre,
+    cambio_parada:meta.cambio, bloque:meta.bloque, estado:'RESUMEN',
+    hora_inicio:meta.horaInicio, hora_fin:meta.horaFin,
+    total:(v+o), total_vacios:v, total_ocupados:o, periodo_id:meta.periodoId,
+    observaciones:document.getElementById('obs')?document.getElementById('obs').value:'',
+    dispositivo:deviceId, status:'pending' };
+  markers.push(rec); guardar(); enviar(rec);
 }
 
 /* ---------- envío a Google Sheets ---------- */
@@ -348,7 +483,7 @@ function enviar(rec){
   if(!scriptUrl || !navigator.onLine){ pintarPend(); return; }
   if(rec.status==='sent' || rec.status==='sending'){ return; }   // evita reenvíos/duplicados
   rec.status='sending'; guardar(); pintarPend();
-  var payload={}; for(var k in rec){ if(k!=='status') payload[k]=rec[k]; } payload.accion='add';
+  var payload={}; for(var k in rec){ if(k!=='status') payload[k]=rec[k]; } if(!payload.accion){ payload.accion='add'; }
   try{
     fetch(scriptUrl, { method:'POST', mode:'no-cors',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -366,7 +501,7 @@ function eliminarEnSheets(rec){
       body: JSON.stringify({accion:'delete', id:rec.id}) });
   }catch(e){}
 }
-/* ---------- cronómetro de 15 minutos ---------- */
+/* ---------- cronómetro de 1 hora (60 min) ---------- */
 var timerInt=null;
 var cerrandoAuto=false;   /* candado de re-entrada, independiente del estado guardado */
 function fmt2(n){ return String(n).padStart(2,'0'); }
@@ -378,12 +513,12 @@ function iniciarTimer(){
 }
 function tickTimer(){
   var bar=document.getElementById('timerBar'); if(!bar) return;
-  var rest=meta.tramoInicio+15*60000-Date.now();
+  var rest=meta.tramoInicio+60*60000-Date.now();
   var over=rest<0, s=Math.floor(Math.abs(rest)/1000);
   document.getElementById('timerTime').textContent=(over?'⏱ +':'⏱ ')+fmt2(Math.floor(s/60))+':'+fmt2(s%60);
-  document.getElementById('timerSub').textContent= over?'BLOQUE CUMPLIDO — cerrando automáticamente…':'Tiempo del bloque (15 min)';
+  document.getElementById('timerSub').textContent= over?'BLOQUE CUMPLIDO — cerrando automáticamente…':'Tiempo del bloque (1 hora)';
   bar.style.color = over?'#ff8a8a':(rest<180000?'#ffcf6b':'#7c93ff');
-  /* Cierre automático al cumplirse los 15 min → vuelve a Identificación del bloque.
+  /* Cierre automático al cumplirse los 60 min → vuelve a Identificación del bloque.
      Se dispara con un candado propio (no depende de 'avisado', que se persiste). */
   if(over && !cerrandoAuto){
     cerrandoAuto=true;
@@ -393,15 +528,17 @@ function tickTimer(){
   }
 }
 function cerrarAutomatico(){
-  if(timerInt){ clearInterval(timerInt); timerInt=null; }
-  flush();  /* intenta enviar lo pendiente antes de cerrar */
-  alert('⏱ Bloque de 15 minutos cumplido. Se cerró automáticamente. Iniciá el nuevo bloque.');
-  nuevoBloque(true);
+  /* Al cumplirse los 60 min finaliza el bloque (envía el resumen, con ceros si no pasó nadie)
+     y deja la pantalla lista para iniciar el siguiente bloque — sin volver a Identificación. */
+  finalizarPeriodo(true);
+  flush();
   cerrandoAuto=false;
+  if(!document.getElementById('conteo').classList.contains('hidden')){ iniciarPeriodo(); }  // arranca solo el siguiente bloque de 1 hora
 }
 function flush(){
   if(!scriptUrl || !navigator.onLine) { pintarPend(); return; }
   log.filter(function(r){return r.status==='pending';}).forEach(function(r){ enviar(r); });
+  markers.filter(function(r){return r.status==='pending';}).forEach(function(r){ enviar(r); });
 }
 function reintentar(){ flush(); alert('Reintentando enviar los pendientes...'); }
 setInterval(flush, 20000);
@@ -411,11 +548,12 @@ document.getElementById('obs').addEventListener('input', function(){ meta.obs=th
 
 /* ---------- exportar CSV ---------- */
 function exportarCSV(){
-  if(!log.length){ alert('No hay registros.'); return; }
+  if(!log.length && !markers.length){ alert('No hay registros.'); return; }
   var esc=function(v){ v=String(v==null?'':v); return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
-  var h=['Fecha','Hora','Contador','Parada_Codigo','Parada_Nombre','Cambio_Parada','Bloque_Horario','Estado','Observaciones','ID_dispositivo','Estado_envio'];
+  var h=['Tipo','Fecha','Hora','Contador','Parada_Codigo','Parada_Nombre','Cambio_Parada','Bloque_Horario','Estado','Hora_Inicio','Hora_Fin','Total','Total_Vacios','Total_Ocupados','Observaciones','ID_dispositivo','Estado_envio'];
   var lines=[h.join(',')];
-  log.forEach(function(r){ lines.push([r.fecha,r.hora,r.contador,r.parada_codigo,r.parada_nombre,r.cambio_parada,r.bloque,r.estado,r.observaciones,r.dispositivo,r.status].map(esc).join(',')); });
+  var todos=markers.concat(log);
+  todos.forEach(function(r){ lines.push([r.tipo||'CONTEO',r.fecha,r.hora,r.contador,r.parada_codigo,r.parada_nombre,r.cambio_parada,r.bloque,r.estado,r.hora_inicio||'',r.hora_fin||'',(r.total==null?'':r.total),(r.total_vacios==null?'':r.total_vacios),(r.total_ocupados==null?'':r.total_ocupados),r.observaciones,r.dispositivo,r.status].map(esc).join(',')); });
   var blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download='conteo_'+(meta.parada_codigo||'').replace(/[^A-Za-z0-9]/g,'')+'_'+(meta.bloque||'').replace(/[^0-9]/g,'')+'.csv';
@@ -424,9 +562,15 @@ function exportarCSV(){
 
 /* ---------- nuevo bloque ---------- */
 function nuevoBloque(auto){
-  var pend=log.filter(function(r){return r.status!=='sent';}).length;
-  if(!auto && pend && !confirm('Hay '+pend+' registro(s) sin enviar. ¿Cerrar el bloque igual? (Se reintentarán solos cuando haya señal)')) return;
+  if(meta.periodoActivo){
+    if(!auto && !confirm('El conteo está en curso. ¿Finalizar este bloque y cambiar de parada/contador?')) return;
+    finalizarPeriodo(false);
+  }
+  var pend=pendientes();
+  if(!auto && pend && !confirm('Hay '+pend+' registro(s) sin enviar. ¿Continuar igual? (Se reintentarán solos cuando haya señal)')) return;
   log=[]; meta.obs=''; meta.tramoInicio=0; meta.avisado=false;
+  meta.periodoActivo=false; meta.horaInicio=''; meta.horaFin='';
+  meta.pendienteCambio=true;   // el próximo inicio se marca como R (cambio de parada/contador)
   if(timerInt){ clearInterval(timerInt); timerInt=null; }
   document.getElementById('setup').classList.remove('hidden');
   document.getElementById('conteo').classList.add('hidden');
@@ -445,14 +589,13 @@ function nuevoBloque(auto){
   pintarRed();
   if(scriptUrl) document.getElementById('scriptUrl').value=scriptUrl;
   document.getElementById('inicioAuto').textContent=stamp();
-  if(meta.bloque && log.length>=0 && meta.contador && meta.parada_codigo){
+  if(meta.contador && meta.parada_codigo){
     document.getElementById('contador').value=meta.contador;
     document.getElementById('parada').value=meta.parada_codigo;
     document.getElementById('paradaSel').innerHTML='✓ '+meta.parada_codigo+' — '+(meta.parada_nombre||'');
     cambioVal=meta.cambio||'No';
     document.querySelectorAll('#cambioRow button').forEach(function(x){ x.classList.toggle('on', x.dataset.v===cambioVal); });
-    mostrarConteo();
-    flush();
+    flush();   /* siempre inicia en la pantalla de Identificación; los datos quedan precargados */
   }
   validar();
 })();
