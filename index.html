@@ -129,13 +129,6 @@
     <div class="sel-badge" id="paradaSel"></div>
     <div class="hint">Se muestran primero las paradas del día elegido. Escriba para buscar cualquier otra.</div>
 
-    <label>3. ¿Está en esta parada por cambio de parada (protocolo)?</label>
-    <div class="radio-row" id="cambioRow">
-      <button data-v="Sí">Sí</button>
-      <button data-v="No" class="on">No</button>
-    </div>
-
-
     <div class="auto">Inicio del registro (automático): <span id="inicioAuto">—</span></div>
     <button class="btn-primary" id="startBtn" onclick="iniciar()" disabled>Continuar →</button>
     <!-- Enlace de Google Sheets fijo en el código (config oculto en producción) -->
@@ -156,7 +149,7 @@
     <div class="tot"><div class="n" id="tTotal">0</div><div class="l">Total</div></div>
   </div>
   <div id="timerBar" style="margin:10px 12px 0;text-align:center;background:#12151a;border:1px solid #2b313b;border-radius:12px;padding:10px;font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;color:#7c93ff;letter-spacing:1px;">
-    <span id="timerTime">⏱ 60:00</span>
+    <span id="timerTime">⏱ 00:00</span>
     <div id="timerSub" style="font-size:11px;font-weight:600;color:#9aa2ad;letter-spacing:.5px;text-transform:uppercase;margin-top:3px;">Bloque sin iniciar · pulsa “Iniciar conteo”</div>
   </div>
   <div class="state-tag off" id="stateTag">Conteo sin iniciar</div>
@@ -164,7 +157,7 @@
     <button class="tap vacio" id="btnVacio" onclick="registrar('Vacío')">VACÍO<span class="sub">+ registrar hora</span></button>
     <button class="tap ocu" id="btnOcu" onclick="registrar('Ocupado')">OCUPADO<span class="sub">+ registrar hora</span></button>
   </div>
-  <div class="last" id="lastMsg">Pulsa “Iniciar conteo” para comenzar el bloque de 1 hora.</div>
+  <div class="last" id="lastMsg">Pulsa “Iniciar conteo” para comenzar el bloque de 15 min.</div>
   <div class="pend" id="pendMsg"></div>
   <div class="toolbar">
     <button onclick="deshacer()">↩ Deshacer último</button>
@@ -176,7 +169,7 @@
     <div class="export-row">
       <button onclick="reintentar()" style="background:#2563eb;">⟳ Reenviar pendientes</button>
     </div>
-    <button class="btn-primary" style="margin-top:10px;background:#7c3aed;" onclick="nuevoBloque()">↺ Cambiar parada / contador</button>
+    <button class="btn-primary" style="margin-top:10px;background:#7c3aed;" onclick="nuevoBloque()">↺ Cambio de contador o cierre de la app</button>
   </div>
 </div>
 
@@ -267,11 +260,6 @@ function validar(){
   document.getElementById(id).addEventListener('input', validar);
   document.getElementById(id).addEventListener('change', validar);
 });
-var cambioVal="No";
-document.querySelectorAll('#cambioRow button').forEach(function(b){
-  b.onclick=function(){ document.querySelectorAll('#cambioRow button').forEach(function(x){x.classList.remove('on');});
-    b.classList.add('on'); cambioVal=b.dataset.v; };
-});
 
 /* ---------- combobox paradas ---------- */
 (function(){
@@ -323,9 +311,9 @@ function elegir(cod){
 /* ---------- iniciar ---------- */
 function iniciar(){
   meta.contador=document.getElementById('contador').value.trim();
-  meta.cambio=cambioVal;
   meta.inicio=stamp();
-  meta.motivoInicio = meta.pendienteCambio ? 'R' : 'I';   // I=Inicio de turno · R=cambio de parada/contador
+  meta.motivoInicio = meta.pendienteCambio ? 'R' : 'I';   // I=Inicio de turno · R=cambio de parada/contador (automático)
+  meta.cambio = meta.pendienteCambio ? 'Sí' : 'No';       // se deriva del motivo, ya no de un campo manual
   meta.pendienteCambio=false;
   meta.turnoId='TURNO'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
   meta.turnoHora=ahoraHMS();
@@ -378,7 +366,7 @@ function finalizarPeriodo(auto){
   enviarResumen(v,o);   // total vacíos/ocupados (0 si no pasó ninguno)
   guardar();
   if(navigator.vibrate) navigator.vibrate([60,40,60]);
-  document.getElementById('lastMsg').innerHTML=(auto?'⏱ Bloque de 1 hora cumplido. ':'Bloque finalizado. ')+
+  document.getElementById('lastMsg').innerHTML=(auto?'⏱ Bloque de 15 min cumplido. ':'Bloque finalizado. ')+
     '<b>'+(v+o)+'</b> veh. ('+v+' vacíos, '+o+' ocupados) · '+meta.horaInicio+'–'+meta.horaFin+'.';
   pintarPeriodo();
 }
@@ -393,7 +381,7 @@ function pintarPeriodo(){
     if(bv) bv.disabled=true; if(bo) bo.disabled=true;
     tag.textContent='Conteo sin iniciar'; tag.className='state-tag off';
     var tt=document.getElementById('timerTime'), ts=document.getElementById('timerSub');
-    if(tt){ tt.textContent='⏱ 60:00'; tt.parentNode.style.color='#7c93ff'; }
+    if(tt){ tt.textContent='⏱ 00:00'; tt.parentNode.style.color='#7c93ff'; }
     if(ts) ts.textContent='Bloque sin iniciar';
   }
 }
@@ -501,7 +489,8 @@ function eliminarEnSheets(rec){
       body: JSON.stringify({accion:'delete', id:rec.id}) });
   }catch(e){}
 }
-/* ---------- cronómetro de 1 hora (60 min) ---------- */
+/* ---------- cronómetro progresivo del bloque (15 min) ---------- */
+var BLOQUE_MS = 15*60000;   // duración del bloque: 15 minutos
 var timerInt=null;
 var cerrandoAuto=false;   /* candado de re-entrada, independiente del estado guardado */
 function fmt2(n){ return String(n).padStart(2,'0'); }
@@ -513,12 +502,13 @@ function iniciarTimer(){
 }
 function tickTimer(){
   var bar=document.getElementById('timerBar'); if(!bar) return;
-  var rest=meta.tramoInicio+60*60000-Date.now();
-  var over=rest<0, s=Math.floor(Math.abs(rest)/1000);
-  document.getElementById('timerTime').textContent=(over?'⏱ +':'⏱ ')+fmt2(Math.floor(s/60))+':'+fmt2(s%60);
-  document.getElementById('timerSub').textContent= over?'BLOQUE CUMPLIDO — cerrando automáticamente…':'Tiempo del bloque (1 hora)';
+  var elapsed=Date.now()-meta.tramoInicio;   // progresivo: cuenta hacia arriba desde el inicio del bloque
+  var over=elapsed>=BLOQUE_MS, s=Math.floor(elapsed/1000);
+  document.getElementById('timerTime').textContent='⏱ '+fmt2(Math.floor(s/60))+':'+fmt2(s%60);
+  document.getElementById('timerSub').textContent= over?'BLOQUE CUMPLIDO — cerrando automáticamente…':'Tiempo del bloque (15 min)';
+  var rest=BLOQUE_MS-elapsed;
   bar.style.color = over?'#ff8a8a':(rest<180000?'#ffcf6b':'#7c93ff');
-  /* Cierre automático al cumplirse los 60 min → vuelve a Identificación del bloque.
+  /* Cierre automático al cumplirse los 15 min → cierra el bloque y arranca el siguiente.
      Se dispara con un candado propio (no depende de 'avisado', que se persiste). */
   if(over && !cerrandoAuto){
     cerrandoAuto=true;
@@ -528,12 +518,12 @@ function tickTimer(){
   }
 }
 function cerrarAutomatico(){
-  /* Al cumplirse los 60 min finaliza el bloque (envía el resumen, con ceros si no pasó nadie)
+  /* Al cumplirse los 15 min finaliza el bloque (envía el resumen, con ceros si no pasó nadie)
      y deja la pantalla lista para iniciar el siguiente bloque — sin volver a Identificación. */
   finalizarPeriodo(true);
   flush();
   cerrandoAuto=false;
-  if(!document.getElementById('conteo').classList.contains('hidden')){ iniciarPeriodo(); }  // arranca solo el siguiente bloque de 1 hora
+  if(!document.getElementById('conteo').classList.contains('hidden')){ iniciarPeriodo(); }  // arranca solo el siguiente bloque de 15 min
 }
 function flush(){
   if(!scriptUrl || !navigator.onLine) { pintarPend(); return; }
@@ -593,8 +583,6 @@ function nuevoBloque(auto){
     document.getElementById('contador').value=meta.contador;
     document.getElementById('parada').value=meta.parada_codigo;
     document.getElementById('paradaSel').innerHTML='✓ '+meta.parada_codigo+' — '+(meta.parada_nombre||'');
-    cambioVal=meta.cambio||'No';
-    document.querySelectorAll('#cambioRow button').forEach(function(x){ x.classList.toggle('on', x.dataset.v===cambioVal); });
     flush();   /* siempre inicia en la pantalla de Identificación; los datos quedan precargados */
   }
   validar();
