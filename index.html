@@ -152,6 +152,7 @@
     <span id="timerTime">⏱ 00:00</span>
     <div id="timerSub" style="font-size:11px;font-weight:600;color:#9aa2ad;letter-spacing:.5px;text-transform:uppercase;margin-top:3px;">Bloque sin iniciar · pulsa “Iniciar conteo”</div>
   </div>
+  <button id="btnNuevoBloque" class="btn-primary hidden" style="margin:10px 12px 0;background:#16855c;font-size:16px;" onclick="iniciarPeriodo()">▶ Iniciar nuevo bloque de 15 min</button>
   <div class="state-tag off" id="stateTag">Conteo sin iniciar</div>
   <div class="buttons">
     <button class="tap vacio" id="btnVacio" onclick="registrar('Vacío')">VACÍO<span class="sub">+ registrar hora</span></button>
@@ -345,6 +346,7 @@ function mostrarConteo(){
 
 /* ---------- período de conteo (arranca automáticamente) ---------- */
 function iniciarPeriodo(){
+  var _b=document.getElementById('btnNuevoBloque'); if(_b) _b.classList.add('hidden');
   markers = markers.filter(function(r){ return r.status!=='sent'; });  // poda
   log=[];
   meta.periodoActivo=true;
@@ -523,7 +525,10 @@ function cerrarAutomatico(){
   finalizarPeriodo(true);
   flush();
   cerrandoAuto=false;
-  if(!document.getElementById('conteo').classList.contains('hidden')){ iniciarPeriodo(); }  // arranca solo el siguiente bloque de 15 min
+  /* NO se arranca el siguiente bloque automáticamente: queda cerrado y a la espera de inicio manual. */
+  var _b=document.getElementById('btnNuevoBloque');
+  if(_b && !document.getElementById('conteo').classList.contains('hidden')){ _b.classList.remove('hidden'); }
+  var _ts=document.getElementById('timerSub'); if(_ts) _ts.textContent='Bloque cerrado · pulsá “Iniciar nuevo bloque” para el siguiente';
 }
 function flush(){
   if(!scriptUrl || !navigator.onLine) { pintarPend(); return; }
