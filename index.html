@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title> Contador de Vehículos — Panamá</title>
+<title>Contador de Vehículos — Panamá</title>
+<!-- UX/Data Integrity v4: anulación auditable + historial reciente -->
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; }
@@ -80,6 +81,7 @@
   .toolbar button { flex:1; background:#1b1f27; color:#e8eaed; border:1px solid #2b313b;
     border-radius:10px; padding:12px; font-size:14px; font-weight:600; cursor:pointer; }
   .toolbar .danger { color:#ff8a8a; }
+  .toolbar button:disabled { opacity:.4; cursor:not-allowed; }
   .export-row { display:flex; gap:8px; margin-top:8px; }
   .export-row button { flex:1; background:#16855c; color:#fff; border:none; border-radius:12px;
     padding:14px; font-size:15px; font-weight:700; cursor:pointer; }
@@ -95,6 +97,37 @@
   .period-ctl .stop { background:linear-gradient(135deg,#e05353,#ff7a7a); color:#2b0707;
     box-shadow:0 6px 18px rgba(224,83,83,.35); }
   .tap:disabled { filter:grayscale(.75) brightness(.55); cursor:not-allowed; }
+
+  /* ---------- mejoras UX v4 ---------- */
+  .count-shell { margin:12px; padding:12px; background:#13171d; border:1px solid #252b34; border-radius:16px; }
+  .obs-card { margin:10px 12px 0; padding:12px; background:#151a21; border:1px solid #29313c; border-radius:14px; }
+  .obs-card label { margin:0 0 6px; }
+  .obs-card textarea { min-height:68px; }
+  .obs-card .hint { margin-top:6px; }
+  .recent { margin:0 12px 10px; background:#12161c; border:1px solid #242b34; border-radius:12px; overflow:hidden; }
+  .recent-head { display:flex; align-items:center; justify-content:space-between; padding:9px 11px; border-bottom:1px solid #20262e; }
+  .recent-title { font-size:11px; text-transform:uppercase; letter-spacing:.65px; color:#8b96a5; font-weight:800; }
+  .recent-note { font-size:10px; color:#687384; }
+  .recent-empty { padding:11px; font-size:12px; color:#687384; }
+  .recent-item { display:flex; align-items:center; gap:9px; padding:9px 11px; border-bottom:1px solid #1d232b; }
+  .recent-item:last-child { border-bottom:none; }
+  .recent-main { flex:1; min-width:0; }
+  .recent-state { font-size:13px; font-weight:800; color:#e8eaed; }
+  .recent-time { font-size:11px; color:#7f8997; margin-top:2px; }
+  .recent-obs { font-size:11px; color:#9aa4b1; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .recent-badge { flex:none; font-size:10px; font-weight:800; letter-spacing:.4px; padding:4px 7px; border-radius:999px; }
+  .recent-badge.vacio { background:rgba(67,160,71,.16); color:#7bd88a; }
+  .recent-badge.ocupado { background:rgba(227,154,28,.16); color:#ffcf6b; }
+  .recent-item.anulado { opacity:.72; }
+  .recent-item.anulado .recent-state { text-decoration:line-through; color:#b7bec8; }
+  .recent-badge.anulado { background:rgba(229,57,53,.16); color:#ff8a8a; }
+  .undo-info { margin:0 12px 8px; font-size:11px; color:#7f8997; text-align:center; }
+  .toolbar #btnUndo:not(:disabled) { border-color:#59404a; background:#21191d; color:#ff9ca8; }
+  .toolbar #btnUndo:not(:disabled):active { transform:scale(.98); }
+  @media (min-width:700px){
+    #setup > .card, #conteo { max-width:720px; margin-left:auto; margin-right:auto; }
+  }
+
 </style>
 </head>
 <body>
@@ -115,7 +148,7 @@
   <div class="card">
     <h2>Identificación del bloque</h2>
     <label>1. Código o nombre del contador</label>
-    <input type="text" id="contador" placeholder="Ej: P3-Juan" autocomplete="off">
+    <input type="text" id="contador" maxlength="80" placeholder="Ej: P3-Juan" autocomplete="off">
 
     <label style="display:none">Día</label>
     <select id="dia" style="display:none"></select>
@@ -154,19 +187,33 @@
   </div>
   <button id="btnNuevoBloque" class="btn-primary hidden" style="margin:10px 12px 0;background:#16855c;font-size:16px;" onclick="iniciarPeriodo()">▶ Iniciar nuevo bloque de 15 min</button>
   <div class="state-tag off" id="stateTag">Conteo sin iniciar</div>
+
+  <div class="obs-card">
+    <label>Observación del próximo registro (opcional)</label>
+    <textarea id="obs" maxlength="500" placeholder="Ej.: vehículo detenido, incidencia puntual..."></textarea>
+    <div class="hint">Se adjunta únicamente al próximo Vacío/Ocupado y luego se limpia automáticamente.</div>
+  </div>
+
   <div class="buttons">
     <button class="tap vacio" id="btnVacio" onclick="registrar('Vacío')">VACÍO<span class="sub">+ registrar hora</span></button>
     <button class="tap ocu" id="btnOcu" onclick="registrar('Ocupado')">OCUPADO<span class="sub">+ registrar hora</span></button>
   </div>
+
   <div class="last" id="lastMsg">Pulsa “Iniciar conteo” para comenzar el bloque de 15 min.</div>
-  <div class="pend" id="pendMsg"></div>
-  <div class="toolbar">
-    <button onclick="deshacer()">↩ Deshacer último</button>
+
+  <div class="recent" id="recentBox">
+    <div class="recent-head"><span class="recent-title">Historial reciente</span><span class="recent-note">últimos 6</span></div>
+    <div id="recentList" class="recent-empty">Todavía no hay registros en este bloque.</div>
   </div>
+
+  <div class="pend" id="pendMsg"></div>
+  <div class="undo-info" id="undoInfo">Deshacer anula el último registro válido; nunca elimina la fila.</div>
+  <div class="toolbar">
+    <button id="btnUndo" onclick="deshacer()" disabled>↩ Sin registros para anular</button>
+  </div>
+
   <div class="card">
-    <h2>Cierre del bloque</h2>
-    <label>Observaciones del bloque (opcional)</label>
-    <textarea id="obs" placeholder="Notas..."></textarea>
+    <h2>Control del bloque</h2>
     <div class="export-row">
       <button onclick="reintentar()" style="background:#2563eb;">⟳ Reenviar pendientes</button>
     </div>
@@ -176,56 +223,89 @@
 
 <script>
 var PARADAS = [
-{"c": "Lun_P1", "n": "Metro Villa Zaita-I", "m": "https://www.google.com/maps?q=9.079842,-79.356695"},
-{"c": "Lun_P2", "n": "Alajuela-R", "m": "https://www.google.com/maps?q=9.02792,-79.507166"},
-{"c": "Lun_P3", "n": "Gran Estacion - Bahia A", "m": "https://www.google.com/maps?q=9.030284,-79.491553"},
-{"c": "Lun_P4", "n": "Metro Cincuentenario-R", "m": "https://www.google.com/maps?q=9.079782,-79.527075"},
-{"c": "Mar_P1", "n": "Balboa-R (Troncal)*", "m": "https://www.google.com/maps?q=9.050935,-79.450451"},
-{"c": "Mar_P2", "n": "Metro San Isidro-R-Puerta 12", "m": "https://www.google.com/maps?q=9.029435,-79.506964"},
-{"c": "Mar_P3", "n": "ZP Torrijos Carter - Puerta 1", "m": "https://www.google.com/maps?q=9.07816,-79.492093"},
-{"c": "Mar_P4", "n": "Inter. Metro Nvo. Tocumen-I-Puerta 06", "m": "https://www.google.com/maps?q=9.102062,-79.353636"},
-{"c": "Mie_P1", "n": "Metro Loteria", "m": "https://www.google.com/maps?q=9.078935,-79.400562"},
-{"c": "Mie_P2", "n": "Entrada Villa Don Bosco-I", "m": "https://www.google.com/maps?q=9.031334,-79.491449"},
-{"c": "Mie_P3", "n": "Los Andes-I - (Troncal)*", "m": "https://www.google.com/maps?q=9.048886,-79.508065"},
-{"c": "Mie_P4", "n": "Balmoral-I", "m": "https://www.google.com/maps?q=9.059213,-79.432333"},
-{"c": "Jue_P2", "n": "Albrook - Bahia A", "m": "https://www.google.com/maps?q=8.973854,-79.551737"},
-{"c": "Jue_P4", "n": "24 de diciembre 2  -Troncal*", "m": "https://www.google.com/maps?q=8.961476,-79.539079"},
-{"c": "Jue_P5", "n": "CC El Dorado-I - Bahia 2", "m": "https://www.google.com/maps?q=9.009534,-79.534123"},
-{"c": "Jue_P8", "n": "Albrook - Bahia C", "m": "https://www.google.com/maps?q=8.975731,-79.551662"},
-{"c": "Vie_P1", "n": "Metro Villa Zaita-I", "m": "https://www.google.com/maps?q=9.079564,-79.526522"},
-{"c": "Vie_P2", "n": "Las Colinas-I (Troncal)*", "m": "https://www.google.com/maps?q=9.050097,-79.509193"},
-{"c": "Vie_P5", "n": "Metro 12 de Octubre-R", "m": "https://www.google.com/maps?q=9.103269,-79.37021"},
-{"c": "Vie_P6", "n": "Albrook - Bahia B", "m": "https://www.google.com/maps?q=8.975104,-79.551617"},
-{"c": "Sab_P4", "n": "Cerro Viento-I - Bahia A -Troncal*", "m": "https://www.google.com/maps?q=9.050487,-79.450427"},
-{"c": "Sab_P5", "n": "5 de mayo Troncal*", "m": "https://www.google.com/maps?q=9.024393,-79.486468"},
-{"c": "Sab_P6", "n": "Muelle Gamboa-R", "m": "https://www.google.com/maps?q=8.986878,-79.51266"},
-{"c": "Sab_P11", "n": "5 de mayo Corredor*", "m": "https://www.google.com/maps?q=8.961749,-79.539268"},
-{"c": "Dom_P7", "n": "Metro Brisas del Golf-R", "m": "https://www.google.com/maps?q=9.031035,-79.491336"},
-{"c": "Dom_P8", "n": "Alajuela-R", "m": "https://www.google.com/maps?q=8.973217,-79.551777"},
-{"c": "Dom_P9", "n": "ZP 24 de Diciembre 2 - Puerta 1", "m": "https://www.google.com/maps?q=9.103266,-79.366524"},
-{"c": "Dom_P12", "n": "Central T Chorrillo", "m": "https://www.google.com/maps?q=8.975609,-79.516371"}
+{"c": "Lun_P1", "n": "La Siesta - (Troncal)*", "m": "https://www.google.com/maps?q=9.079842,-79.356695"},
+{"c": "Lun_P2", "n": "Gran Estacion - Bahia A", "m": "https://www.google.com/maps?q=9.02792,-79.507166"},
+{"c": "Lun_P3", "n": "Metro Cincuentenario-R", "m": "https://www.google.com/maps?q=9.030284,-79.491553"},
+{"c": "Lun_P4", "n": "Metro Villa Zaita-I (intercambiador Villa Zaita)", "m": "https://www.google.com/maps?q=9.079461,-79.528506"},
+{"c": "Mar_P1", "n": "Cerro Viento-I - Bahia A -Troncal*", "m": "https://www.google.com/maps?q=9.050935,-79.450451"},
+{"c": "Mar_P2", "n": "Metro San Miguelito-I", "m": "https://www.google.com/maps?q=9.029435,-79.506964"},
+{"c": "Mar_P3", "n": "ZP Torrijos Carter - Puerta 3", "m": "https://www.google.com/maps?q=9.07816,-79.492093"},
+{"c": "Mar_P4", "n": "Inter. Metro Nvo. Tocumen-R-Puerta 11", "m": "https://www.google.com/maps?q=9.102062,-79.353636"},
+{"c": "Mie_P1", "n": "Metro Mañanitas-I", "m": "https://www.google.com/maps?q=9.078935,-79.400562"},
+{"c": "Mie_P2", "n": "Entrada Villa Guadalupe-I", "m": "https://www.google.com/maps?q=9.031334,-79.491449"},
+{"c": "Mie_P3", "n": "Los Andes-R- (Troncal)*", "m": "https://www.google.com/maps?q=9.048886,-79.508065"},
+{"c": "Mie_P4", "n": "Balmoral-R", "m": "https://www.google.com/maps?q=9.059213,-79.432333"},
+{"c": "Jue_P2", "n": "Metro Villa Zaita-R", "m": "https://www.google.com/maps?q=9.079564,-79.526522"},
+{"c": "Jue_P4", "n": "Los Andes-I - (Troncal)*", "m": "https://www.google.com/maps?q=9.050097,-79.509193"},
+{"c": "Jue_P5", "n": "Balboa-I (Troncal)*", "m": "https://www.google.com/maps?q=9.024393,-79.486468"},
+{"c": "Jue_P8", "n": "5 de mayo Troncal*", "m": "https://www.google.com/maps?q=8.961749,-79.539268"},
+{"c": "Vie_P1", "n": "Metro 24 de Diciembre-R", "m": "https://www.google.com/maps?q=9.103269,-79.37021"},
+{"c": "Vie_P2", "n": "Megapolis Outlets", "m": "https://www.google.com/maps?q=8.976043,-79.516615"},
+{"c": "Vie_P5", "n": "Zona Pedregal- Troncal*", "m": "https://www.google.com/maps?q=9.060313,79.42952"},
+{"c": "Vie_P6", "n": "Centro Balboa", "m": "https://www.google.com/maps?q=8.975609,-79.516371"},
+{"c": "Sab_P4", "n": "CC El Dorado-R", "m": "https://www.google.com/maps?q=9.009534,-79.534123"},
+{"c": "Sab_P5", "n": "Cerro Viento-R - Bahia A-Troncal*", "m": "https://www.google.com/maps?q=9.050487,-79.450427"},
+{"c": "Sab_P6", "n": "Multiplaza-I", "m": "https://www.google.com/maps?q=8.986878,-79.51266"},
+{"c": "Sab_P11", "n": "Calle M", "m": "https://www.google.com/maps?q=8.962993,-79.540742"},
+{"c": "Dom_P7", "n": "24 de diciembre - Troncal*", "m": "https://www.google.com/maps?q=9.103483,-79.369806"},
+{"c": "Dom_P8", "n": "La Cabima-R", "m": "https://www.google.com/maps?q=9.107718,-79.536519"},
+{"c": "Dom_P9", "n": "24 de diciembre 2  -Troncal*", "m": "https://www.google.com/maps?q=9.103266,-79.366524"},
+{"c": "Dom_P12", "n": "Juan Diaz-I- (Troncal)*", "m": "https://www.google.com/maps?q=9.045628,79.449316"}
 ];
 
 var DIAS = ["Lunes","Martes","Miercoles","Jueves","Viernes","Sabado","Domingo"];
 var DIA_PREF = {Lunes:"Lun_",Martes:"Mar_",Miercoles:"Mie_",Jueves:"Jue_",Viernes:"Vie_",Sabado:"Sab_",Domingo:"Dom_"};
 
 var meta = { contador:"", parada_codigo:"", parada_nombre:"", cambio:"No", bloque:"", inicio:"", obs:"", tramoInicio:0, avisado:false, horaInicio:"", horaFin:"", periodoActivo:false, periodoId:"" };
-var log = [];              // registros CONTEO del bloque en curso
-var markers = [];          // marcadores INICIO / RESUMEN
+var log = [];              // registros SOLO del bloque visible/en curso
+var markers = [];          // cola persistente: marcadores + conteos pendientes de bloques anteriores
 var scriptUrl = "";
 var deviceId = "";
+var storageError = false;
 
 /* ---------- persistencia ---------- */
+function normalizarEstadoEnvio(arr){
+  return (arr||[]).map(function(r){
+    // Un fetch interrumpido no puede considerarse confirmado: se reintenta al abrir.
+    // El backend debe de-duplicar por id para que el reintento sea seguro.
+    if(r && r.status==='sending') r.status='pending';
+    return r;
+  });
+}
 function cargar(){
   try{
     var s = JSON.parse(localStorage.getItem('cv_state')||'null');
-    if(s){ meta=s.meta||meta; log=s.log||[]; markers=s.markers||[]; }
-  }catch(e){}
+    if(s){
+      meta=Object.assign({},meta,s.meta||{});
+      log=normalizarEstadoEnvio(s.log||[]);
+      markers=normalizarEstadoEnvio(s.markers||[]);
+    }
+  }catch(e){ storageError=true; }
   scriptUrl = localStorage.getItem('cv_url')||"https://script.google.com/macros/s/AKfycbyZjGFaGFUao5vgQTwdCJ_dcpX4AS8sEmnrvM2xvRiSx9aFmBooi8o-8MNympzEsnzy/exec";
   deviceId = localStorage.getItem('cv_device');
-  if(!deviceId){ deviceId = 'D'+Math.random().toString(36).slice(2,8).toUpperCase(); localStorage.setItem('cv_device',deviceId); }
+  if(!deviceId){
+    deviceId = 'D'+(window.crypto&&crypto.randomUUID ? crypto.randomUUID().replace(/-/g,'').slice(0,10).toUpperCase() : Math.random().toString(36).slice(2,12).toUpperCase());
+    try{ localStorage.setItem('cv_device',deviceId); }catch(e){ storageError=true; }
+  }
 }
-function guardar(){ try{ localStorage.setItem('cv_state', JSON.stringify({meta:meta,log:log,markers:markers})); }catch(e){} }
+function guardar(){
+  try{
+    localStorage.setItem('cv_state', JSON.stringify({meta:meta,log:log,markers:markers}));
+    storageError=false; return true;
+  }catch(e){
+    storageError=true; pintarPend(); return false;
+  }
+}
+function crearId(pref){
+  if(window.crypto && crypto.randomUUID) return (pref||'')+crypto.randomUUID();
+  return (pref||'')+Date.now()+'_'+Math.random().toString(36).slice(2,10);
+}
+function archivarPendientesDelLog(){
+  log.forEach(function(r){
+    if(!r || r.status==='sent') return;
+    if(!markers.some(function(m){ return m && m.id===r.id; })) markers.push(r);
+  });
+}
 
 function ahoraHMS(){ var d=new Date(),p=function(n){return String(n).padStart(2,'0');};
   return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
@@ -245,8 +325,15 @@ window.addEventListener('offline', pintarRed);
 /* ---------- config URL ---------- */
 function toggleConfig(){ document.getElementById('configBox').classList.toggle('hidden'); }
 function guardarUrl(){
-  scriptUrl = document.getElementById('scriptUrl').value.trim();
-  localStorage.setItem('cv_url', scriptUrl);
+  var u=document.getElementById('scriptUrl').value.trim();
+  if(u){
+    try{
+      var parsed=new URL(u);
+      if(parsed.protocol!=='https:' || parsed.hostname!=='script.google.com') throw new Error('URL no permitida');
+    }catch(e){ alert('Usa una URL HTTPS válida de script.google.com.'); return; }
+  }
+  scriptUrl=u;
+  try{ localStorage.setItem('cv_url', scriptUrl); }catch(e){ storageError=true; }
   alert(scriptUrl ? 'Enlace guardado.' : 'Enlace borrado. La app contará y guardará local, pero no enviará a Google Sheets.');
 }
 
@@ -316,7 +403,7 @@ function iniciar(){
   meta.motivoInicio = meta.pendienteCambio ? 'R' : 'I';   // I=Inicio de turno · R=cambio de parada/contador (automático)
   meta.cambio = meta.pendienteCambio ? 'Sí' : 'No';       // se deriva del motivo, ya no de un campo manual
   meta.pendienteCambio=false;
-  meta.turnoId='TURNO'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
+  meta.turnoId=crearId('TURNO_');
   meta.turnoHora=ahoraHMS();
   guardar();
   enviarInicioTurno();   // registra la marca (I o R) aunque no pase ningún vehículo
@@ -347,14 +434,17 @@ function mostrarConteo(){
 /* ---------- período de conteo (arranca automáticamente) ---------- */
 function iniciarPeriodo(){
   var _b=document.getElementById('btnNuevoBloque'); if(_b) _b.classList.add('hidden');
-  markers = markers.filter(function(r){ return r.status!=='sent'; });  // poda
+  // Nunca borraremos un conteo pendiente de un bloque anterior.
+  archivarPendientesDelLog();
+  markers = markers.filter(function(r){ return r.status!=='sent'; });
   log=[];
+  meta.obs='';
+  var _obs=document.getElementById('obs'); if(_obs) _obs.value='';
   meta.periodoActivo=true;
-  meta.periodoId='B'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
+  meta.periodoId=crearId('B_');
   meta.horaInicio=ahoraHMS(); meta.horaFin='';
   meta.bloque=autoBloque(); meta.tramoInicio=Date.now(); meta.avisado=false;
   guardar();
-  /* No se registra nada al iniciar: el primer envío ocurre al primer toque de Vacío u Ocupado. */
   document.getElementById('hdrSub').textContent = meta.parada_codigo+' · '+meta.bloque+' · '+meta.contador;
   document.getElementById('lastMsg').innerHTML='Bloque iniciado a las <b>'+meta.horaInicio+'</b>. Marca cada vehículo.';
   pintarPeriodo(); render(); iniciarTimer();
@@ -363,14 +453,19 @@ function finalizarPeriodo(auto){
   if(!meta.periodoActivo) return;
   var v=log.filter(function(r){return r.estado==='Vacío';}).length;
   var o=log.filter(function(r){return r.estado==='Ocupado';}).length;
+  var obsEl=document.getElementById('obs');
+  var obsBloque='';
   meta.horaFin=ahoraHMS(); meta.periodoActivo=false;
   if(timerInt){ clearInterval(timerInt); timerInt=null; }
-  enviarResumen(v,o);   // total vacíos/ocupados (0 si no pasó ninguno)
+  enviarResumen(v,o,obsBloque);
+  // El comentario pertenece al bloque que acaba de cerrarse; el siguiente inicia limpio.
+  meta.obs='';
+  if(obsEl) obsEl.value='';
   guardar();
   if(navigator.vibrate) navigator.vibrate([60,40,60]);
   document.getElementById('lastMsg').innerHTML=(auto?'⏱ Bloque de 15 min cumplido. ':'Bloque finalizado. ')+
     '<b>'+(v+o)+'</b> veh. ('+v+' vacíos, '+o+' ocupados) · '+meta.horaInicio+'–'+meta.horaFin+'.';
-  pintarPeriodo();
+  pintarPeriodo(); render();
 }
 function pintarPeriodo(){
   var tag=document.getElementById('stateTag');
@@ -390,41 +485,97 @@ function pintarPeriodo(){
 
 /* ---------- registro por toque ---------- */
 function registrar(estado){
-  if(!meta.periodoActivo){ alert('Primero pulsa “▶ Iniciar conteo”.'); return; }
-  var rec={ id:Date.now()+'_'+Math.random().toString(36).slice(2,6), tipo:'CONTEO',
+  if(!meta.periodoActivo){ alert('El bloque no está activo. Inicia un nuevo bloque para continuar.'); return; }
+
+  // La observación pertenece al registro que se está marcando ahora.
+  // Se copia al registro ANTES de limpiar el campo, de modo que también quede
+  // protegida cuando el dispositivo está sin conexión y el envío queda pendiente.
+  var obsEl=document.getElementById('obs');
+  var obsRegistro=((obsEl?obsEl.value:meta.obs)||'').trim().slice(0,500);
+
+  var rec={ id:crearId('C_'), tipo:'CONTEO',
     fecha:hoyFecha(), hora:ahoraHMS(), contador:meta.contador,
     parada_codigo:meta.parada_codigo, parada_nombre:meta.parada_nombre,
     cambio_parada:meta.cambio, bloque:meta.bloque, estado:estado,
     hora_inicio:meta.horaInicio, hora_fin:'', periodo_id:meta.periodoId,
-    observaciones:document.getElementById('obs')?document.getElementById('obs').value:'',
+    observaciones:obsRegistro,
     dispositivo:deviceId, status:'pending' };
-  log.push(rec); guardar();
+
+  log.push(rec);
+
+  // El registro ya quedó guardado localmente en memoria; el siguiente vehículo
+  // debe comenzar con una observación vacía, haya o no conexión a Internet.
+  meta.obs='';
+  if(obsEl) obsEl.value='';
+  guardar();
+
   if(navigator.vibrate) navigator.vibrate(15);
   document.getElementById('lastMsg').innerHTML='Último: <b>'+estado+'</b> a las '+rec.hora;
   render();
   enviar(rec);
 }
-function deshacer(){
-  if(!log.length) return;
-  var rec=log.pop(); guardar();
-  if(rec.status==='sent' || rec.status==='sending'){ anularEnSheets(rec); }
-  document.getElementById('lastMsg').textContent='Se deshizo el último registro (corrección).';
-  render();
+function candidatoDeshacer(){
+  for(var i=log.length-1;i>=0;i--){
+    var r=log[i];
+    if(r && r.tipo==='CONTEO' && (r.estado==='Vacío' || r.estado==='Ocupado')) return r;
+  }
+  return null;
 }
-/* Deshacer: deja UNA sola fila ANULADO reusando la MISMA id del original.
-   Se borra el original y se envía la corrección con su id; al reusar la id, la
-   de-duplicación evita que el original (fila en blanco) reaparezca o se duplique. */
-function anularEnSheets(orig){
-  if(!orig || !orig.id) return;
-  var rec={ id:orig.id+'_ANUL', anula_id:orig.id, accion:'anular', tipo:'ANULADO', fecha:hoyFecha(), hora:ahoraHMS(),
-    contador:meta.contador, parada_codigo:meta.parada_codigo, parada_nombre:meta.parada_nombre,
-    cambio_parada:meta.cambio, bloque:meta.bloque, estado:'ANULADO',
-    hora_inicio:meta.horaInicio, hora_fin:'', total:'', total_vacios:'', total_ocupados:'',
-    periodo_id:meta.periodoId,
-    observaciones:'REGISTRO DESHECHO (corrección, no es conteo) — anula '+(orig.estado||'')+' de las '+(orig.hora||''),
-    dispositivo:deviceId, status:'pending' };
-  markers = markers.filter(function(m){ return m.id!==rec.id; });
-  markers.push(rec); guardar(); enviar(rec);
+function textoAnulacion(orig, estadoOriginal, marca){
+  var previo=(orig.observaciones||'').trim();
+  var audit='ANULADO '+marca+' — originalmente '+estadoOriginal+' de las '+(orig.hora||'')+'; corrección del operador.';
+  return (previo ? previo+' | ' : '') + audit;
+}
+function encolarAnulacionServidor(orig, estadoOriginal){
+  // Este comando NO debe generar una nueva fila en Sheets. El Apps Script debe
+  // localizar anula_id y actualizar esa misma fila (estado + observaciones).
+  var cmd={ id:crearId('CMD_ANUL_'), tipo:'ANULADO', tipo_original:'CONTEO', es_comando:true, accion:'anular',
+    anula_id:orig.id, target_id:orig.id,
+    fecha:hoyFecha(), hora:ahoraHMS(), contador:orig.contador||meta.contador,
+    parada_codigo:orig.parada_codigo||meta.parada_codigo, parada_nombre:orig.parada_nombre||meta.parada_nombre,
+    cambio_parada:orig.cambio_parada||meta.cambio, bloque:orig.bloque||meta.bloque,
+    estado:'ANULADO', estado_original:estadoOriginal,
+    hora_inicio:orig.hora_inicio||meta.horaInicio, hora_fin:'',
+    total:'', total_vacios:'', total_ocupados:'', periodo_id:orig.periodo_id||meta.periodoId,
+    observaciones:orig.observaciones||'', dispositivo:orig.dispositivo||deviceId, status:'pending' };
+  markers.push(cmd); guardar(); enviar(cmd);
+}
+function deshacer(){
+  if(!meta.periodoActivo){
+    alert('El bloque ya está cerrado. Para proteger el resumen no se permiten anulaciones después del cierre.');
+    return;
+  }
+  var rec=candidatoDeshacer();
+  if(!rec) return;
+
+  var estadoOriginal=rec.estado;
+  var ok=confirm('¿Anular el último registro?\n\n'+estadoOriginal+' · '+(rec.hora||'')+'\n\nNo se eliminará: quedará marcado como ANULADO para mantener la trazabilidad.');
+  if(!ok) return;
+
+  var estadoEnvioPrevio=rec.status;
+  var marca=stamp();
+  rec.tipo_original=rec.tipo||'CONTEO';
+  rec.tipo='ANULADO';
+  rec.estado_original=estadoOriginal;
+  rec.estado='ANULADO';
+  rec.anulado_en=marca;
+  rec.anulado_por=deviceId;
+  rec.observaciones=textoAnulacion(rec,estadoOriginal,marca);
+
+  // Si aún nunca salió del dispositivo, el eventual ADD ya viajará como ANULADO.
+  // Si ya fue enviado o estaba en vuelo, enviamos un comando de actualización
+  // para modificar LA MISMA FILA en el servidor.
+  if(estadoEnvioPrevio==='sent'){
+    encolarAnulacionServidor(rec,estadoOriginal);
+  } else if(estadoEnvioPrevio==='sending'){
+    // Esperamos a que termine el POST original antes de pedir la actualización,
+    // para conservar el orden: primero alta, después anulación.
+    rec._anulacionPendiente=true;
+  }
+
+  guardar();
+  document.getElementById('lastMsg').innerHTML='↩ <b>'+estadoOriginal+'</b> de las <b>'+(rec.hora||'')+'</b> marcado como <b>ANULADO</b>. El registro se conserva para auditoría.';
+  render();
 }
 function reiniciar(){
   if(!log.length) return;
@@ -432,20 +583,62 @@ function reiniciar(){
     log=[]; guardar(); render();
   }
 }
+function renderHistorial(){
+  var box=document.getElementById('recentList'); if(!box) return;
+  var items=log.slice(-6).reverse();
+  if(!items.length){ box.className='recent-empty'; box.textContent='Todavía no hay registros en este bloque.'; return; }
+  box.className=''; box.innerHTML='';
+  items.forEach(function(r){
+    var row=document.createElement('div');
+    row.className='recent-item'+(r.estado==='ANULADO'?' anulado':'');
+    var main=document.createElement('div'); main.className='recent-main';
+    var st=document.createElement('div'); st.className='recent-state';
+    var original=r.estado_original||r.estado||'Registro';
+    st.textContent=(r.estado==='ANULADO' ? original+' → ANULADO' : original);
+    var tm=document.createElement('div'); tm.className='recent-time'; tm.textContent=r.hora||'';
+    main.appendChild(st); main.appendChild(tm);
+    if(r.observaciones){ var ob=document.createElement('div'); ob.className='recent-obs'; ob.textContent=r.observaciones; main.appendChild(ob); }
+    var badge=document.createElement('span');
+    var bc=r.estado==='ANULADO'?'anulado':(r.estado==='Vacío'?'vacio':'ocupado');
+    badge.className='recent-badge '+bc;
+    badge.textContent=r.estado==='ANULADO'?'ANULADO':(r.estado||'');
+    row.appendChild(main); row.appendChild(badge); box.appendChild(row);
+  });
+}
 function render(){
   var v=log.filter(function(r){return r.estado==='Vacío';}).length;
   var o=log.filter(function(r){return r.estado==='Ocupado';}).length;
   document.getElementById('tVacio').textContent=v;
   document.getElementById('tOcu').textContent=o;
-  document.getElementById('tTotal').textContent=log.length;
+  document.getElementById('tTotal').textContent=v+o;
+  var cand=candidatoDeshacer();
+  var bu=document.getElementById('btnUndo');
+  if(bu){
+    bu.disabled=(!meta.periodoActivo || !cand);
+    bu.textContent=cand ? '↩ Anular último: '+cand.estado+' · '+(cand.hora||'') : '↩ Sin registros para anular';
+  }
+  var ui=document.getElementById('undoInfo');
+  if(ui) ui.textContent=cand ? 'Se anulará '+cand.estado+' de las '+(cand.hora||'')+'. La fila se conserva.' : 'Deshacer nunca elimina filas; las marca como ANULADO.';
+  renderHistorial();
   pintarPend();
 }
-function pendientes(){ return log.filter(function(r){return r.status!=='sent';}).length + markers.filter(function(r){return r.status!=='sent';}).length; }
+function pendientes(){
+  return log.filter(function(r){return r.status!=='sent';}).length + markers.filter(function(r){return r.status!=='sent';}).length;
+}
 function pintarPend(){
   var pend=pendientes();
-  var el=document.getElementById('pendMsg');
-  if(!scriptUrl){ el.innerHTML='<span class="w">⚠ Sin enlace de Google Sheets configurado — guardando solo local.</span>'; return; }
-  el.innerHTML = pend? '<span class="w">⏳ '+pend+' pendiente(s) de enviar</span>' : '<span class="ok">✓ todo enviado</span>';
+  var el=document.getElementById('pendMsg'); if(!el) return;
+  if(storageError){
+    el.innerHTML='<span class="w">⚠ No se pudo guardar localmente. No cierres la página y revisa el almacenamiento del navegador.</span>';
+    return;
+  }
+  if(!scriptUrl){
+    el.innerHTML='<span class="w">⚠ Sin enlace de Google Sheets — datos protegidos solo en este dispositivo.</span>';
+    return;
+  }
+  el.innerHTML = pend
+    ? '<span class="w">⏳ '+pend+' pendiente(s) · guardados localmente; se reintentarán al recuperar conexión</span>'
+    : '<span class="ok">✓ sin pendientes locales</span>';
 }
 
 /* Marcadores INICIO / RESUMEN: garantizan que el bloque quede registrado aunque no pase ningún vehículo */
@@ -457,13 +650,13 @@ function enviarMarcador(tipo){
     periodo_id:meta.periodoId, observaciones:'', dispositivo:deviceId, status:'pending' };
   markers.push(rec); guardar(); enviar(rec);
 }
-function enviarResumen(v,o){
+function enviarResumen(v,o,obsBloque){
   var rec={ id:meta.periodoId+'_RESUMEN', tipo:'RESUMEN', fecha:hoyFecha(), hora:meta.horaFin||ahoraHMS(),
     contador:meta.contador, parada_codigo:meta.parada_codigo, parada_nombre:meta.parada_nombre,
     cambio_parada:meta.cambio, bloque:meta.bloque, estado:'RESUMEN',
     hora_inicio:meta.horaInicio, hora_fin:meta.horaFin,
     total:(v+o), total_vacios:v, total_ocupados:o, periodo_id:meta.periodoId,
-    observaciones:document.getElementById('obs')?document.getElementById('obs').value:'',
+    observaciones:(obsBloque||''),
     dispositivo:deviceId, status:'pending' };
   markers.push(rec); guardar(); enviar(rec);
 }
@@ -473,13 +666,20 @@ function enviar(rec){
   if(!scriptUrl || !navigator.onLine){ pintarPend(); return; }
   if(rec.status==='sent' || rec.status==='sending'){ return; }   // evita reenvíos/duplicados
   rec.status='sending'; guardar(); pintarPend();
-  var payload={}; for(var k in rec){ if(k!=='status') payload[k]=rec[k]; } if(!payload.accion){ payload.accion='add'; }
+  var payload={}; for(var k in rec){ if(k!=='status' && k.charAt(0)!=='_') payload[k]=rec[k]; } if(!payload.accion){ payload.accion='add'; }
   try{
     fetch(scriptUrl, { method:'POST', mode:'no-cors',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify(payload) })
-    .then(function(){ rec.status='sent'; guardar(); pintarPend();
-      if(rec.deleted){ eliminarEnSheets(rec); } })
+    .then(function(){
+      rec.status='sent';
+      if(rec._anulacionPendiente){
+        rec._anulacionPendiente=false;
+        encolarAnulacionServidor(rec,rec.estado_original||'CONTEO');
+      }
+      guardar(); pintarPend();
+      if(rec.deleted){ eliminarEnSheets(rec); }
+    })
     .catch(function(){ rec.status='pending'; guardar(); pintarPend(); });
   }catch(e){ rec.status='pending'; guardar(); pintarPend(); }
 }
@@ -547,7 +747,7 @@ function exportarCSV(){
   var esc=function(v){ v=String(v==null?'':v); return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
   var h=['Tipo','Fecha','Hora','Contador','Parada_Codigo','Parada_Nombre','Cambio_Parada','Bloque_Horario','Estado','Hora_Inicio','Hora_Fin','Total','Total_Vacios','Total_Ocupados','Observaciones','ID_dispositivo','Estado_envio'];
   var lines=[h.join(',')];
-  var todos=markers.concat(log);
+  var todos=markers.filter(function(r){return !r.es_comando && r.accion!=='anular';}).concat(log);
   todos.forEach(function(r){ lines.push([r.tipo||'CONTEO',r.fecha,r.hora,r.contador,r.parada_codigo,r.parada_nombre,r.cambio_parada,r.bloque,r.estado,r.hora_inicio||'',r.hora_fin||'',(r.total==null?'':r.total),(r.total_vacios==null?'':r.total_vacios),(r.total_ocupados==null?'':r.total_ocupados),r.observaciones,r.dispositivo,r.status].map(esc).join(',')); });
   var blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
@@ -563,6 +763,7 @@ function nuevoBloque(auto){
   }
   var pend=pendientes();
   if(!auto && pend && !confirm('Hay '+pend+' registro(s) sin enviar. ¿Continuar igual? (Se reintentarán solos cuando haya señal)')) return;
+  archivarPendientesDelLog();
   log=[]; meta.obs=''; meta.tramoInicio=0; meta.avisado=false;
   meta.periodoActivo=false; meta.horaInicio=''; meta.horaFin='';
   meta.pendienteCambio=true;   // el próximo inicio se marca como R (cambio de parada/contador)
@@ -588,9 +789,13 @@ function nuevoBloque(auto){
     document.getElementById('contador').value=meta.contador;
     document.getElementById('parada').value=meta.parada_codigo;
     document.getElementById('paradaSel').innerHTML='✓ '+meta.parada_codigo+' — '+(meta.parada_nombre||'');
-    flush();   /* siempre inicia en la pantalla de Identificación; los datos quedan precargados */
+    if(meta.periodoActivo && meta.tramoInicio && meta.periodoId){
+      mostrarConteo();
+      document.getElementById('lastMsg').innerHTML='↻ Bloque recuperado. Continúa el conteo normalmente.';
+    }
+    flush();
   }
-  validar();
+  validar(); render();
 })();
 </script>
 </body>
